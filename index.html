@@ -65,7 +65,8 @@
 
   /* ---------- Main ---------- */
   .main{flex:1;overflow-y:auto;background:#fff;position:relative}
-  .wrap{max-width:780px;margin:0 auto;padding:26px 24px 90px}
+  .wrap{max-width:1160px;margin:0 auto;padding:26px 28px 90px}
+  .task-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px;align-items:start;margin-bottom:2px}
   h1.page{font-size:22px;font-weight:900;letter-spacing:-.4px}
   .page-sub{font-size:13px;color:var(--mut);margin-top:4px}
 
@@ -114,7 +115,7 @@
   .group-frac{font-size:11px;color:var(--mut);font-family:var(--mono)}
   .group-acts{display:flex;gap:3px}
 
-  .task{background:#fff;border:1px solid var(--line2);border-radius:12px;padding:11px 14px;margin-bottom:7px;transition:border-color .15s,box-shadow .15s}
+  .task{background:#fff;border:1px solid var(--line2);border-radius:12px;padding:11px 14px;transition:border-color .15s,box-shadow .15s}
   .task-row{display:flex;align-items:flex-start;gap:11px}
   .check{margin-top:2px;flex-shrink:0;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;border-width:2.5px;border-style:solid;background:transparent}
   .check.done{color:#fff;font-size:11px;font-weight:900}
@@ -149,6 +150,21 @@
   .bnext{font-size:10px;color:var(--ink2);background:var(--line2);padding:3px 8px;border-radius:5px;margin-top:8px}
 
   .empty{text-align:center;color:var(--mut2);font-size:13px;padding:30px 0}
+
+  .ai-panel{background:linear-gradient(135deg,#f8fafc,#fff);border:1px solid var(--line);border-radius:16px;padding:16px 18px 18px;margin-bottom:18px;position:relative;overflow:hidden}
+  .ai-panel:before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(#2563eb,#7c3aed)}
+  .ai-head{font-size:14px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+  .ins{display:flex;align-items:flex-start;gap:9px;width:100%;text-align:left;padding:7px 10px;border-radius:10px;font-size:13px;line-height:1.55;color:#334155;margin-bottom:3px;background:transparent}
+  .ins[data-act]:hover{background:#f1f5f9;cursor:pointer}
+  .ins .ins-ic{flex-shrink:0;font-size:13px;margin-top:1px}
+  .ins b{font-weight:700;color:#0f172a}
+  .ai-divider{height:1px;background:var(--line);margin:13px 0 11px}
+  .ai-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+  .ai-label{font-size:11px;font-weight:700;color:#7c3aed;letter-spacing:1px;font-family:var(--mono)}
+  .ai-gen{font-size:12px;font-weight:600;color:#fff;background:linear-gradient(135deg,#2563eb,#7c3aed);padding:7px 15px;border-radius:8px;margin-left:auto}
+  .ai-box{font-size:13px;line-height:1.75;color:#334155;white-space:pre-wrap;background:#faf9ff;border:1px solid #ede9fe;border-radius:10px;padding:12px 14px}
+  .ai-hint{font-size:12px;color:#94a3b8;line-height:1.6}
+  .ai-at{font-size:10px;color:#cbd5e1;font-family:var(--mono);margin-top:6px}
 
   /* ---------- Modal ---------- */
   .overlay{position:fixed;inset:0;background:rgba(15,23,42,.4);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
@@ -259,7 +275,7 @@ var DEFAULTS = [
 ];
 
 /* ---------- 狀態 ---------- */
-var state = { cats: null, lastSaved: null };
+var state = { cats: null, lastSaved: null, ai: null };
 var ui = {
   scope:'__overview__',  // __overview__ | __all__ | catId
   sub:null,              // 選定的子分類 id（null=整個歸類）
@@ -472,13 +488,71 @@ function mainHTML(){
   return catHTML(cat);
 }
 
+function buildInsights(){
+  var T=allTasks(), out=[];
+  function names(l){return l.slice(0,3).map(function(o){return o.t.name;}).join('、')+(l.length>3?' 等':'');}
+  var overdue=T.filter(function(o){return o.t.deadline&&o.t.status!=='done'&&daysTo(o.t.deadline)<0;});
+  if(overdue.length){var mx=Math.max.apply(null,overdue.map(function(o){return -daysTo(o.t.deadline);})); out.push({w:6,icon:'🔴',kind:'deadline',html:'<b>'+overdue.length+' 項已逾期</b>（最久 '+mx+' 天）：'+esc(names(overdue))});}
+  var blocked=T.filter(function(o){return o.t.status==='blocked';});
+  if(blocked.length) out.push({w:5,icon:'⛔',kind:'blocked',html:'<b>'+blocked.length+' 項卡住</b>，需優先排除障礙：'+esc(names(blocked))});
+  var soon=T.filter(function(o){return o.t.deadline&&o.t.status!=='done'&&daysTo(o.t.deadline)>=0&&daysTo(o.t.deadline)<=3;});
+  if(soon.length) out.push({w:4,icon:'🟠',kind:'deadline',html:'<b>'+soon.length+' 項 3 天內到期</b>：'+esc(names(soon))});
+  var hns=T.filter(function(o){return o.t.priority==='high'&&o.t.status==='not_started';});
+  if(hns.length) out.push({w:3,icon:'⚡',html:'<b>'+hns.length+' 項高優先尚未啟動</b>：'+esc(names(hns))});
+  var hnd=T.filter(function(o){return o.t.priority==='high'&&o.t.status!=='done'&&!o.t.deadline;});
+  if(hnd.length) out.push({w:2,icon:'📌',html:hnd.length+' 項高優先<b>未設截止日</b>，建議補上時程：'+esc(names(hnd))});
+  var clDone=T.filter(function(o){return o.t.status!=='done'&&o.t.checklist&&o.t.checklist.length>0&&o.t.checklist.every(function(c){return c.done;});});
+  if(clDone.length) out.push({w:2,icon:'✔️',html:clDone.length+' 項<b>子細項已全部完成</b>，可標記為已完成：'+esc(names(clDone))});
+  var lag=state.cats.filter(function(c){var s=catStats(c);return s.tot>=3&&s.pct<25;});
+  if(lag.length) out.push({w:1,icon:'📉',html:'進度落後的歸類：'+esc(lag.map(function(c){return c.name+'('+catStats(c).pct+'%)';}).join('、'))});
+  var wip=T.filter(function(o){return o.t.status==='in_progress';});
+  if(wip.length>=6) out.push({w:1,icon:'🎯',html:'同時 <b>'+wip.length+' 項進行中</b>，建議聚焦收尾再開新工作'});
+  out.sort(function(a,b){return b.w-a.w;});
+  return out.slice(0,6);
+}
+function insightsPanelHTML(){
+  var ins=buildInsights();
+  var h='<div class="ai-panel"><div class="ai-head">🤖 AI 建議與留意事項</div><div>';
+  if(!ins.length) h+='<div class="ins"><span class="ins-ic">✅</span><span>目前沒有需要特別留意的項目，狀況良好。</span></div>';
+  else ins.forEach(function(i){ var tag=i.kind?'button':'div', at=i.kind?' data-act="insightJump" data-kind="'+i.kind+'"':''; h+='<'+tag+' class="ins"'+at+'><span class="ins-ic">'+i.icon+'</span><span>'+i.html+'</span></'+tag+'>'; });
+  h+='</div><div class="ai-divider"></div>';
+  h+='<div class="ai-row"><span class="ai-label">AI 建議 · GEMINI</span><button class="ai-gen" data-act="genAI">✨ 產生 AI 建議</button></div>';
+  h+='<div id="aiBox">';
+  if(state.ai&&state.ai.text){ h+='<div class="ai-box">'+esc(state.ai.text)+'</div><div class="ai-at">產生於 '+new Date(state.ai.at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</div>'; }
+  else h+='<div class="ai-hint">點「產生 AI 建議」由 Gemini 依目前清單給出優先建議（需先在後端設定金鑰，詳見部署說明）。</div>';
+  h+='</div></div>';
+  return h;
+}
+function aiSummary(){
+  var lines=['今天日期：'+today()];
+  var T=allTasks();
+  lines.push('總細項 '+T.length+' 項，已完成 '+T.filter(function(o){return o.t.status==='done';}).length+' 項。以下僅列未完成項目：');
+  state.cats.forEach(function(c){
+    var open=[];
+    c.subs.forEach(function(sb){ sb.tasks.forEach(function(tk){ if(tk.status!=='done') open.push('  - ['+STATUS[tk.status].label+'/'+PRIO[tk.priority].label+'優先'+(tk.deadline?'/截止'+tk.deadline:'/無截止')+'] '+sb.name+'｜'+tk.name+(tk.note?'（'+tk.note+'）':'')); }); });
+    if(open.length){ lines.push('【'+c.name+'】'); lines=lines.concat(open); }
+  });
+  return lines.join('\n');
+}
+async function genAI(){
+  var box=document.getElementById('aiBox');
+  if(!API){ if(box)box.innerHTML='<div class="ai-hint" style="color:#dc2626">尚未設定雲端同步，無法呼叫 AI。請先到左下「同步設定」貼上 /exec 網址。</div>'; return; }
+  if(box)box.innerHTML='<div class="ai-hint">✨ AI 產生中…（約數秒）</div>';
+  try{
+    var r=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'advise',summary:aiSummary()})});
+    var j=await r.json();
+    if(j&&j.ok&&j.text){ state.ai={text:j.text,at:j.at||new Date().toISOString()}; try{localStorage.setItem('wt-ai',JSON.stringify(state.ai));}catch(e){} render(); }
+    else { var msg = (j&&j.error==='NO_KEY')?'後端尚未設定 GEMINI_KEY。請依部署說明在 Apps Script 指令碼屬性加入金鑰並重新部署。':('AI 失敗：'+esc((j&&j.error)||'未知錯誤')); if(box)box.innerHTML='<div class="ai-hint" style="color:#dc2626">'+msg+'</div>'; }
+  }catch(e){ if(box)box.innerHTML='<div class="ai-hint" style="color:#dc2626">連線失敗，請稍後再試。</div>'; }
+}
+
 function overviewHTML(){
   var tasks=allTasks(), tot=tasks.length, dn=tasks.filter(function(o){return o.t.status==='done';}).length, pct=tot?Math.round(dn/tot*100):0;
   var ip=tasks.filter(function(o){return o.t.status==='in_progress';}).length;
   var over=tasks.filter(function(o){return o.t.deadline&&o.t.status!=='done'&&daysTo(o.t.deadline)<0;}).length;
   var due7=tasks.filter(function(o){return o.t.deadline&&o.t.status!=='done'&&daysTo(o.t.deadline)>=0&&daysTo(o.t.deadline)<=7;}).length;
   var d=new Date();
-  var h='<div style="animation:fadeIn .3s ease"><h1 class="page">工作總覽</h1><p class="page-sub">'+d.toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'long'})+'</p>';
+  var h='<div style="animation:fadeIn .3s ease">'+insightsPanelHTML()+'<h1 class="page">工作總覽</h1><p class="page-sub">'+d.toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'long'})+'</p>';
   // 整體完成度
   h+='<div class="ring-card"><div style="position:relative;flex-shrink:0">'+ring(dn,tot,68,5,'#2563eb')+'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:16px;font-weight:900;font-family:var(--mono);color:#2563eb">'+pct+'%</span></div><div style="flex:1"><div style="font-size:14px;font-weight:700;margin-bottom:8px">整體完成度 '+dn+'/'+tot+'</div><div class="seg">';
   SORDER.forEach(function(k){var n=tasks.filter(function(o){return o.t.status===k;}).length; if(n)h+='<div title="'+STATUS[k].label+' '+n+'" style="width:'+(n/tot*100)+'%;background:'+STATUS[k].dot+'"></div>';});
@@ -511,7 +585,7 @@ function allHTML(){
   var h='<div style="animation:fadeIn .3s ease"><h1 class="page">🗂 全部細項</h1><p class="page-sub">跨所有歸類與子分類 · 共 '+allTasks().length+' 項</p>';
   h+=toolbarHTML();
   if(ui.view==='board'){ h+=boardHTML(list); }
-  else { if(!list.length)h+='<div class="empty">沒有符合條件的細項</div>'; else list.forEach(function(o){h+=taskCardHTML(o,true);}); }
+  else { if(!list.length)h+='<div class="empty">沒有符合條件的細項</div>'; else { h+='<div class="task-grid">'; list.forEach(function(o){h+=taskCardHTML(o,true);}); h+='</div>'; } }
   return h+'</div>';
 }
 
@@ -541,7 +615,7 @@ function catHTML(cat){
       if(ss.tot)h+='<span class="group-prog"><i style="width:'+ss.pct+'%;background:'+sb.color+'"></i></span><span class="group-frac">'+ss.dn+'/'+ss.tot+'</span>';
       h+='<div class="group-acts" style="margin-left:auto"><button class="btn-icon" data-act="movesub" data-cat="'+cat.id+'" data-sub="'+sb.id+'" data-dir="-1">↑</button><button class="btn-icon" data-act="movesub" data-cat="'+cat.id+'" data-sub="'+sb.id+'" data-dir="1">↓</button><button class="btn-icon" data-act="editsub" data-cat="'+cat.id+'" data-sub="'+sb.id+'">✎</button><button class="btn-icon" data-act="delsub" data-cat="'+cat.id+'" data-sub="'+sb.id+'" style="color:#ef4444">✕</button></div></div>';
       if(!list.length)h+='<div class="empty" style="padding:14px 0">此子分類沒有符合條件的細項</div>';
-      else list.forEach(function(o){h+=taskCardHTML(o,false);});
+      else { h+='<div class="task-grid">'; list.forEach(function(o){h+=taskCardHTML(o,false);}); h+='</div>'; }
       h+='<button class="add-task" data-act="addtask" data-cat="'+cat.id+'" data-sub="'+sb.id+'">+ 新增細項</button>';
       h+='</div>';
     });
@@ -672,6 +746,8 @@ document.addEventListener('click', function(ev){
   switch(a){
     case 'burger': ui.sidebarOpen=true; render(); break;
     case 'scrim': ui.sidebarOpen=false; render(); break;
+    case 'genAI': genAI(); break;
+    case 'insightJump': ui.scope='__all__'; ui.sub=null; ui.view='list'; ui.sidebarOpen=false; if(el.getAttribute('data-kind')==='blocked'){ui.fStatus='blocked';ui.sortBy='manual';}else{ui.fStatus='all';ui.sortBy='deadline';} render(); break;
     case 'nav': ui.scope=el.getAttribute('data-scope'); ui.sub=null; ui.sidebarOpen=false; ev.stopPropagation(); render(); break;
     case 'navsub': ui.scope=cid; ui.sub=sid; ui.sidebarOpen=false; render(); break;
     case 'expand': ui.expanded[cid]=!ui.expanded[cid]; render(); break;
@@ -808,6 +884,7 @@ async function saveSettings(){
 /* ---------- 啟動 ---------- */
 (async function(){
   await loadData();
+  try{var _a=localStorage.getItem('wt-ai'); if(_a)state.ai=JSON.parse(_a);}catch(e){}
   render();
   if('serviceWorker' in navigator){ try{ await navigator.serviceWorker.register('sw.js'); }catch(e){} }
 })();
