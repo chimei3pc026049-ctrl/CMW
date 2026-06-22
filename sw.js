@@ -1,4 +1,4 @@
-const CACHE = 'wt-shell-v1';
+const CACHE = 'wt-shell-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -11,9 +11,16 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+// 同源資源採「網路優先」：有網路就抓最新並更新快取，離線才退回快取
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
-  // 只快取同源的 App 殼層；跨網域的 GAS 同步請求一律走網路
   if (u.origin !== location.origin) return;
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+  if (e.request.method !== 'GET') return;
+  e.respondWith(
+    fetch(e.request).then(res => {
+      const copy = res.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copy));
+      return res;
+    }).catch(() => caches.match(e.request))
+  );
 });
